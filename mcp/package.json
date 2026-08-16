@@ -1,0 +1,11 @@
+{
+  "name": "obsidian-vault-mcp",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node mcp/test.js" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "yaml": "^2.5.0",
+    "zod": "^3.23.0"
+  }
+}

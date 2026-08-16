@@ -1,0 +1,18 @@
+#!/bin/sh
+# /usr/local/bin/syncprobe <max_age_seconds>
+#
+# `ob sync-status` is NOT a health signal: it prints config.json and exits 0
+# whether or not sync has worked since the pod started. The only real signal is
+# the "Fully synced" line the sync loop appends to sync.log every ~30s while
+# connected and idle. If the websocket wedges or the token dies, the process
+# stays alive and that line stops appearing.
+#
+# Fails closed: no log, no line, or an unparseable timestamp all exit non-zero.
+set -eu
+log=$(ls -1 "$OB_STATE"/sync/*/sync.log 2>/dev/null | head -1)
+[ -n "$log" ] || { echo "no sync.log yet"; exit 1; }
+ts=$(tail -c 200000 "$log" | grep -a 'Fully synced' | tail -1 | cut -c2-25)
+[ -n "$ts" ] || { echo "never reached Fully synced"; exit 1; }
+age=$(( $(date -u +%s) - $(date -u -d "$ts" +%s) ))
+echo "last full sync ${age}s ago (threshold ${1}s)"
+[ "$age" -lt "$1" ]
