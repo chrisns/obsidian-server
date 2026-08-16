@@ -154,5 +154,17 @@ for (const l of fresh) {
   assert.equal(l.client === "indexer" ? "rw" : "ro", l.scope);
 }
 
+
+// Regression: the SDK's default localhost Host validation 403'd kubelet probes
+// (Host: <pod-ip>) and would have 403'd n8n (Host: service DNS). /healthz must
+// answer 200 whatever the Host header says.
+{
+  const res = await fetch(`${base}/healthz`, { headers: { Host: "10.99.99.99:8080" } });
+  assert.equal(res.status, 200, "healthz must ignore the Host header");
+  const res2 = await fetch(`${base}/mcp`, { method: "POST", headers: { Host: "obsidian.obsidian.svc.cluster.local" } });
+  assert.equal(res2.status, 401, "mcp with foreign Host must reach auth (401), not host validation (403)");
+}
+console.log("host ok");
 srv.close();
 console.log("auth ok");
+

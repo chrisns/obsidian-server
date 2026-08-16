@@ -184,7 +184,15 @@ tool("rw", "vault_write",
   });
 
 // --- transport --------------------------------------------------------------
-const app = createMcpExpressApp();
+// host: "0.0.0.0" matches the real bind and disables the SDK's localhost-only
+// Host-header validation, which otherwise 403s every request whose Host is not
+// localhost: kubelet probes (pod IP), n8n (the Service DNS name), and any
+// future consumer. DNS-rebinding protection defends UNAUTHENTICATED localhost
+// servers from browsers; every route here that matters is bearer-gated, which
+// is the SDK's own documented alternative. Do not "fix" the resulting startup
+// warning by adding allowedHosts: pod IPs are unenumerable, so an allowlist
+// reintroduces the probe 403 the moment the workaround header is dropped.
+const app = createMcpExpressApp({ host: "0.0.0.0" });
 
 // Registered BEFORE the auth middleware, so the kubelet needs no token and the
 // middleware needs no exemption logic. Both are cheap by construction: /readyz
