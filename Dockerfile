@@ -7,7 +7,7 @@
 FROM node:22-bookworm-slim
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ripgrep ca-certificates curl \
+ && apt-get install -y --no-install-recommends ripgrep ca-certificates curl unison \
  && rm -rf /var/lib/apt/lists/*
 
 ARG OB_VERSION=0.0.14
@@ -27,8 +27,8 @@ COPY mcp/package.json mcp/package-lock.json ./
 RUN npm ci --omit=dev
 COPY mcp/server.js mcp/auth.js ./
 
-COPY bin/syncprobe /usr/local/bin/
-RUN chmod +x /usr/local/bin/syncprobe
+COPY bin/syncprobe bin/vaultsync /usr/local/bin/
+RUN chmod +x /usr/local/bin/syncprobe /usr/local/bin/vaultsync
 
 ENV HOME=/data/state \
     XDG_CONFIG_HOME=/data/state \

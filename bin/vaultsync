@@ -1,0 +1,59 @@
+#!/bin/sh
+# /usr/local/bin/vaultsync
+#
+# Two-way sync between the index-note spool (a shared NFS volume that the Pebble
+# Index ring writes into) and a folder inside the Obsidian vault.
+#
+# Why sync at all, rather than mounting the spool into the vault directly: the
+# vault is an emptyDir local to this pod, and `ob`'s change detection is inotify
+# with no periodic rescan. Writes from another pod onto an NFS mount never fire
+# inotify here, so notes mounted in from outside would sit in the vault forever
+# and never upload. Copying them in from INSIDE this pod is what makes ob notice.
+#
+# THE FAILURE THIS GUARDS AGAINST. The vault is disposable: on every pod restart
+# it is empty until `ob` re-pulls ~1,600 notes from Obsidian Sync. A two-way sync
+# that ran during that window would read the empty vault as "everything was
+# deleted" and propagate that into the spool, destroying captures that exist
+# nowhere else. Both gates below exist for that one scenario.
+set -eu
+
+SPOOL=${SPOOL:-/inbox}
+VAULT=${VAULT:-/data/vault}
+SUBDIR=${SUBDIR:-Index Inbox}
+ARCHIVE=${UNISON:-/data/state/unison}
+MIN_VAULT_NOTES=${MIN_VAULT_NOTES:-500}
+MAX_SYNC_AGE=${MAX_SYNC_AGE:-900}
+INTERVAL=${INTERVAL:-60}
+
+export UNISON="$ARCHIVE"
+mkdir -p "$ARCHIVE" "$VAULT/$SUBDIR"
+
+while :; do
+  # Gate 1: ob must be currently synced. If the websocket has wedged, the vault
+  # is stale and we must not reason about what it does or does not contain.
+  if ! syncprobe "$MAX_SYNC_AGE" >/dev/null 2>&1; then
+    echo "{\"evt\":\"skip\",\"why\":\"sync not current\"}"
+    sleep "$INTERVAL"; continue
+  fi
+
+  # Gate 2: the vault must look populated. This is the direct check for the
+  # restart window, and it is deliberately crude: a count, not a heuristic.
+  n=$(find "$VAULT" -name '*.md' -not -path "*/$SUBDIR/*" 2>/dev/null | wc -l)
+  if [ "$n" -lt "$MIN_VAULT_NOTES" ]; then
+    echo "{\"evt\":\"skip\",\"why\":\"vault has $n notes, below $MIN_VAULT_NOTES\"}"
+    sleep "$INTERVAL"; continue
+  fi
+
+  # -ignore entries: Synology (@eaDir, thumbnails) and macOS (.DS_Store) litter
+  # the share because it is also browsed over SMB. None of it belongs in a vault.
+  unison "$SPOOL" "$VAULT/$SUBDIR" \
+    -batch -auto -times -prefer newer \
+    -ignore 'Name .DS_Store' \
+    -ignore 'Name @eaDir' \
+    -ignore 'Name .Trash*' \
+    -ignore 'Name *.tmp' \
+    -ignore 'Path .unison*' \
+    -log=false 2>&1 | grep -vE '^(Contacting server|Looking for changes|Reconciling|Nothing to do)' || true
+
+  sleep "$INTERVAL"
+done
