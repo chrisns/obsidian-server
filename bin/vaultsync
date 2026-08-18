@@ -86,6 +86,15 @@ while :; do
     -log=false 2>&1 | grep -vE '^(Contacting server|Looking for changes|Reconciling|Nothing to do)' \
     | tee /tmp/unison.out || true
 
+  # Force group-writable after every pass. -perms 0 stops unison syncing mode
+  # bits, but it also makes it CREATE files 0600 rather than honouring the
+  # umask, which locks out the sync container running as a different uid. That
+  # is a hard failure traded for a cosmetic warning, so do not rely on unison's
+  # mode handling at all: assert the modes we need, every time. The tree is
+  # small and this is idempotent.
+  find "$VAULT/$SUBDIR" ! -perm -g+w -exec chmod g+rw {} + 2>/dev/null || true
+  find "$VAULT/$SUBDIR" -type d ! -perm -g+s -exec chmod g+s {} + 2>/dev/null || true
+
   # A skipped item is a conflict unison refused to guess at. Silence here is the
   # failure mode this whole estate exists to avoid, so say it loudly.
   if grep -qiE 'conflict|skipped [1-9]|failed [1-9]' /tmp/unison.out 2>/dev/null; then
