@@ -214,6 +214,30 @@ app.use(auth);                       // everything below here is authenticated
 // close so it fires whatever happens: a successful call, a tool the caller's
 // scope does not expose (which never reaches the wrapper above), a malformed
 // body, or a crash. Absence of `ok` is the signature of a scope refusal.
+// POST /poke: "a note landed in the spool, sync it now".
+//
+// Fire-and-forget from the ingest service, matching how it already pokes the
+// voice scorer: no body, no note data, and the caller swallows any failure. It
+// only touches a file. vaultsync watches for that file and does the work, so a
+// burst of captures coalesces into one pass instead of racing.
+//
+// 202, not 200: the sync has been requested, not performed.
+//
+// Any valid token is accepted regardless of scope, deliberately. This grants no
+// vault access: it cannot read a note and it cannot write one. Gating it on `rw`
+// would force the ingest service to hold a credential far stronger than its job
+// needs, which is the opposite of least privilege.
+app.post("/poke", (q, s) => {
+  try {
+    writeFileSync(process.env.POKE_FILE ?? "/data/state/sync-poke", String(Date.now()));
+  } catch (e) {
+    console.error(JSON.stringify({ evt: "poke", ok: false, err: e.message }));
+    return s.status(500).end();
+  }
+  console.error(JSON.stringify({ evt: "poke", ok: true, client: ctx.getStore()?.client ?? null }));
+  s.status(202).end();
+});
+
 app.post("/mcp", async (q, s) => {
   const t0 = Date.now();
   const body = [].concat(q.body ?? []);

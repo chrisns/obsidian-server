@@ -23,7 +23,9 @@ SUBDIR=${SUBDIR:-Index Inbox}
 ARCHIVE=${UNISON:-/data/state/unison}
 MIN_VAULT_NOTES=${MIN_VAULT_NOTES:-500}
 MAX_SYNC_AGE=${MAX_SYNC_AGE:-900}
-INTERVAL=${INTERVAL:-60}
+INTERVAL=${INTERVAL:-300}
+POKE_FILE=${POKE_FILE:-/data/state/sync-poke}
+POKE_CHECK=${POKE_CHECK:-2}
 
 export UNISON="$ARCHIVE"
 mkdir -p "$ARCHIVE" "$VAULT/$SUBDIR"
@@ -33,7 +35,7 @@ while :; do
   # is stale and we must not reason about what it does or does not contain.
   if ! syncprobe "$MAX_SYNC_AGE" >/dev/null 2>&1; then
     echo "{\"evt\":\"skip\",\"why\":\"sync not current\"}"
-    sleep "$INTERVAL"; continue
+    sleep "$POKE_CHECK"; continue
   fi
 
   # Gate 2: the vault must look populated. This is the direct check for the
@@ -41,7 +43,7 @@ while :; do
   n=$(find "$VAULT" -name '*.md' -not -path "*/$SUBDIR/*" 2>/dev/null | wc -l)
   if [ "$n" -lt "$MIN_VAULT_NOTES" ]; then
     echo "{\"evt\":\"skip\",\"why\":\"vault has $n notes, below $MIN_VAULT_NOTES\"}"
-    sleep "$INTERVAL"; continue
+    sleep "$POKE_CHECK"; continue
   fi
 
   # -ignore entries: Synology (@eaDir, thumbnails) and macOS (.DS_Store) litter
@@ -55,5 +57,20 @@ while :; do
     -ignore 'Path .unison*' \
     -log=false 2>&1 | grep -vE '^(Contacting server|Looking for changes|Reconciling|Nothing to do)' || true
 
-  sleep "$INTERVAL"
+  # Sleep in short slices so a poke is picked up within POKE_CHECK seconds
+  # rather than at the end of the interval. The poll is now a backstop for
+  # pokes that were dropped, not the primary path, hence the long interval.
+  waited=0
+  while [ "$waited" -lt "$INTERVAL" ]; do
+    if [ -f "$POKE_FILE" ]; then
+      # Consume before syncing, never after. A poke arriving mid-run then
+      # survives to trigger the next pass, instead of being swallowed by the
+      # run that started too early to see its note.
+      rm -f "$POKE_FILE"
+      echo "{\"evt\":\"poked\"}"
+      break
+    fi
+    sleep "$POKE_CHECK"
+    waited=$((waited + POKE_CHECK))
+  done
 done
