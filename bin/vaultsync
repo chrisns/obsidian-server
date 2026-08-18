@@ -17,6 +17,16 @@
 # nowhere else. Both gates below exist for that one scenario.
 set -eu
 
+# 0002, not the default 0022. This container runs as the ingest service's uid so
+# it can write the spool, but the `sync` container beside it runs as a different
+# uid and must be able to OVERWRITE what this one creates in the vault: ob
+# downloads and rewrites a note whenever the remote copy changes, which is
+# exactly what happens when the owner ticks "Verified me" in Obsidian. Both
+# containers share gid 1000 and the vault directory is setgid, so group-writable
+# files are what let them coexist. With 0022 the sync container gets EACCES and
+# stops syncing entirely, silently, until someone reads its log.
+umask 0002
+
 SPOOL=${SPOOL:-/inbox}
 VAULT=${VAULT:-/data/vault}
 SUBDIR=${SUBDIR:-Index Inbox}
