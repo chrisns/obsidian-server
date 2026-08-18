@@ -58,8 +58,16 @@ while :; do
   #
   # -copyonconflict keeps both sides instead, so a conflict costs a stray file
   # to reconcile by hand and never costs data.
+  #
+  # -perms 0 -dontchmod: do not sync permission bits at all. The spool is NFS
+  # with its own idea of modes and the vault is an emptyDir, so the two never
+  # agree on the directory and unison reported "properties changed on both
+  # sides" on EVERY pass. A conflict alarm that always fires is the same as no
+  # alarm, and it would bury a real note conflict. Content is what matters here;
+  # Obsidian does not care about the mode bits.
   unison "$SPOOL" "$VAULT/$SUBDIR" \
     -batch -auto -times -copyonconflict \
+    -perms 0 -dontchmod \
     -ignore 'Name .DS_Store' \
     -ignore 'Name @eaDir' \
     -ignore 'Name .Trash*' \
