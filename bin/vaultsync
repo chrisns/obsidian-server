@@ -48,14 +48,31 @@ while :; do
 
   # -ignore entries: Synology (@eaDir, thumbnails) and macOS (.DS_Store) litter
   # the share because it is also browsed over SMB. None of it belongs in a vault.
+  # NO -prefer. Two different writers own different keys in the same file: the
+  # voice scorer owns voice/voiceScore/voiceModel in the spool, and the owner
+  # owns "Verified me" by ticking it in Obsidian, which arrives via the vault.
+  # A whole-file "newer wins" resolves that by discarding one of them, and a
+  # lost tick means a note silently misses the scorer's reference gallery with
+  # no signal anywhere. VOICE.md 10 already forbids the scorer overwriting that
+  # key; this is the same rule applied to the sync.
+  #
+  # -copyonconflict keeps both sides instead, so a conflict costs a stray file
+  # to reconcile by hand and never costs data.
   unison "$SPOOL" "$VAULT/$SUBDIR" \
-    -batch -auto -times -prefer newer \
+    -batch -auto -times -copyonconflict \
     -ignore 'Name .DS_Store' \
     -ignore 'Name @eaDir' \
     -ignore 'Name .Trash*' \
     -ignore 'Name *.tmp' \
     -ignore 'Path .unison*' \
-    -log=false 2>&1 | grep -vE '^(Contacting server|Looking for changes|Reconciling|Nothing to do)' || true
+    -log=false 2>&1 | grep -vE '^(Contacting server|Looking for changes|Reconciling|Nothing to do)' \
+    | tee /tmp/unison.out || true
+
+  # A skipped item is a conflict unison refused to guess at. Silence here is the
+  # failure mode this whole estate exists to avoid, so say it loudly.
+  if grep -qiE 'conflict|skipped [1-9]|failed [1-9]' /tmp/unison.out 2>/dev/null; then
+    echo "{\"evt\":\"conflict\",\"detail\":\"$(grep -iE 'conflict|skipped|failed' /tmp/unison.out | head -3 | tr '\n' ';' | tr -d '\"')\"}"
+  fi
 
   # Sleep in short slices so a poke is picked up within POKE_CHECK seconds
   # rather than at the end of the interval. The poll is now a backstop for
