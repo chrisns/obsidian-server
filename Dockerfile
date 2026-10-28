@@ -4,7 +4,7 @@
 # tested surface. Alpine also correlates with #45 (0777 file modes).
 # Node 22 exactly: engines says >=22.0.0 but #43 shows Node 26 breaking on the
 # pinned better-sqlite3.
-FROM node:26-bookworm-slim@sha256:28147155d47dc31abe0a46e0d12b59b2fb3d0a2dcc5dc65fce76a074180b16fe
+FROM node:26-bookworm-slim@sha256:3041f464442defe6de36c20b6904b125a6178cfa0a7fc7cc99c0bb5120586f70
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ripgrep ca-certificates curl unison \
